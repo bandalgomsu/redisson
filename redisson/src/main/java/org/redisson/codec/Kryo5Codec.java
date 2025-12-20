@@ -186,12 +186,17 @@ public class Kryo5Codec extends BaseCodec {
         public Object decode(ByteBuf buf, State state) throws IOException {
             Kryo kryo = kryoPool.obtain();
             Input input = inputPool.obtain();
+            boolean isNeededToFree = false;
             try {
                 input.setInputStream(new ByteBufInputStream(buf));
-                return kryo.readClassAndObject(input);
+                Object object = kryo.readClassAndObject(input);
+                isNeededToFree = true;
+                return object;
             } finally {
                 kryoPool.free(kryo);
-                inputPool.free(input);
+                if (isNeededToFree) {
+                    inputPool.free(input);
+                }
             }
         }
     };

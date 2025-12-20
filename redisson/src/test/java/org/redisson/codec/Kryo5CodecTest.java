@@ -1,6 +1,8 @@
 package org.redisson.codec;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.Unpooled;
+import java.lang.reflect.Field;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -99,4 +101,44 @@ public class Kryo5CodecTest {
         assertThat(v4_1.get()).isEqualTo("123");
     }
 
+    @Test
+    void testInputPoolLeakPrevention() throws Exception {
+        Kryo5Codec codec = new Kryo5Codec();
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < 500000; i++) {
+            sb.append('a');
+        }
+        String hugeString = sb.toString();
+
+        ByteBuf validBuf = codec.getValueEncoder().encode(hugeString);
+        ByteBuf poisonBuf = validBuf.retainedSlice(0, 10);
+        validBuf.release();
+
+        try {
+            codec.getValueDecoder().decode(poisonBuf, null);
+        }catch (Exception e) {}
+
+        Object inputPool = getInternalField(codec, "inputPool");
+        Object input = invokeMethod(inputPool, "obtain");
+        char[] chars = (char[]) getInternalField(input, "chars");
+
+        assertThat(chars.length).isLessThan(100000);
+    }
+
+    private Object getInternalField(Object obj, String fieldName) throws Exception {
+        Field field = obj.getClass().getDeclaredField(fieldName);
+        field.setAccessible(true);
+        return field.get(obj);
+    }
+
+    private Object invokeMethod(Object obj, String methodName) throws Exception {
+        try {
+            var method = obj.getClass().getMethod(methodName);
+            return method.invoke(obj);
+        } catch (NoSuchMethodException e) {
+            var method = obj.getClass().getSuperclass().getDeclaredMethod(methodName);
+            method.setAccessible(true);
+            return method.invoke(obj);
+        }
+    }
 }
