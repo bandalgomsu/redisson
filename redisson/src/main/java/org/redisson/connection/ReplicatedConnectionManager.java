@@ -16,6 +16,7 @@
 package org.redisson.connection;
 
 import io.netty.util.Timeout;
+import java.util.Objects;
 import org.redisson.api.NodeType;
 import org.redisson.client.RedisClient;
 import org.redisson.client.RedisConnection;
@@ -143,22 +144,41 @@ public class ReplicatedConnectionManager extends MasterSlaveConnectionManager {
             }
 
             Set<InetSocketAddress> slaveIPs = Collections.newSetFromMap(new ConcurrentHashMap<>());
-            List<CompletableFuture<Role>> roles = cfg.getNodeAddresses().stream()
-                .map(address -> {
-                    RedisURI uri = new RedisURI(address);
-                    return checkNode(uri, cfg, slaveIPs);
-                })
+            List<CompletableFuture<NodeCheckResult>> results = cfg.getNodeAddresses().stream()
+                    .map(address -> {
+                        RedisURI uri = new RedisURI(address);
+                        return checkNode(uri, cfg, slaveIPs)
+                                .handle((role, ex) -> {
+                                    if (ex != null || role == null) {
+                                        return NodeCheckResult.skip(uri, ex);
+                                    }
+
+                                    return NodeCheckResult.ok(uri, role);
+                                });
+                    })
                 .collect(Collectors.toList());
 
-            CompletableFuture<Void> f = CompletableFuture.allOf(roles.toArray(new CompletableFuture[0]));
+            CompletableFuture<Void> f = CompletableFuture.allOf(results.toArray(new CompletableFuture[0]));
             f.whenComplete((r, e) -> {
-                if (e == null) {
-                    if (roles.stream().noneMatch(role -> Role.master.equals(role.getNow(Role.slave)))) {
+                boolean anyOk = results.stream()
+                        .map(cf -> cf.getNow(null))
+                        .filter(Objects::nonNull)
+                        .anyMatch(NodeCheckResult::isOk);
+
+                boolean hasMaster = results.stream()
+                        .map(cf -> cf.getNow(null))
+                        .filter(res -> res != null && res.isOk())
+                        .anyMatch(res -> res.role == Role.master);
+
+                if (anyOk) {
+                    if (!hasMaster) {
                         log.error("No master available among the configured addresses, "
                                 + "please check your configuration.");
                     }
 
                     checkFailedSlaves(slaveIPs);
+                } else {
+                    log.warn("No successful node role checks in this scan. Skip failed-slave cleanup to avoid false positives.");
                 }
 
                 scheduleMasterChangeCheck(cfg);
@@ -289,5 +309,29 @@ public class ReplicatedConnectionManager extends MasterSlaveConnectionManager {
         
         closeNodeConnections();
         super.shutdown(quietPeriod, timeout, unit);
+    }
+
+    static final class NodeCheckResult {
+        final RedisURI uri;
+        final Role role;          // 성공 시만 값
+        final Throwable error;    // 실패 시만 값
+
+        private NodeCheckResult(RedisURI uri, Role role, Throwable error) {
+            this.uri = uri;
+            this.role = role;
+            this.error = error;
+        }
+
+        static NodeCheckResult ok(RedisURI uri, Role role) {
+            return new NodeCheckResult(uri, role, null);
+        }
+
+        static NodeCheckResult skip(RedisURI uri, Throwable error) {
+            return new NodeCheckResult(uri, null, error);
+        }
+
+        boolean isOk() {
+            return error == null && role != null;
+        }
     }
 }
