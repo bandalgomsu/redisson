@@ -59,6 +59,8 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
      */
     private long dnsMonitoringInterval = 5000;
 
+    private boolean dnsMonitoringSwitchOnFailure;
+
     SingleServerConfig() {
     }
 
@@ -68,6 +70,7 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
         setConnectionPoolSize(config.getConnectionPoolSize());
         setSubscriptionConnectionPoolSize(config.getSubscriptionConnectionPoolSize());
         setDnsMonitoringInterval(config.getDnsMonitoringInterval());
+        setDnsMonitoringSwitchOnFailure(config.isDnsMonitoringSwitchOnFailure());
         setSubscriptionConnectionMinimumIdleSize(config.getSubscriptionConnectionMinimumIdleSize());
         setConnectionMinimumIdleSize(config.getConnectionMinimumIdleSize());
         setDatabase(config.getDatabase());
@@ -137,6 +140,27 @@ public class SingleServerConfig extends BaseConfig<SingleServerConfig> {
     }
     public long getDnsMonitoringInterval() {
         return dnsMonitoringInterval;
+    }
+
+    /**
+     * Defines DNS monitoring behavior.
+     * <p>
+     * If set to <code>true</code> then DNS change causes master switch only if current master is considered failed.
+     * <p>
+     * If set to <code>false</code> then DNS change causes immediate master switch.
+     * <p>
+     * Default is <code>false</code>.
+     *
+     * @param dnsMonitoringSwitchOnFailure flag
+     * @return config
+     */
+    public SingleServerConfig setDnsMonitoringSwitchOnFailure(boolean dnsMonitoringSwitchOnFailure) {
+        this.dnsMonitoringSwitchOnFailure = dnsMonitoringSwitchOnFailure;
+        return this;
+    }
+
+    public boolean isDnsMonitoringSwitchOnFailure() {
+        return dnsMonitoringSwitchOnFailure;
     }
 
     /**

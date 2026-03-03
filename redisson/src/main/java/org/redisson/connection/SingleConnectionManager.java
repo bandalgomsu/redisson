@@ -116,6 +116,7 @@ public class SingleConnectionManager extends MasterSlaveConnectionManager {
         newconfig.setConnectTimeout(cfg.getConnectTimeout());
         newconfig.setIdleConnectionTimeout(cfg.getIdleConnectionTimeout());
         newconfig.setDnsMonitoringInterval(cfg.getDnsMonitoringInterval());
+        newconfig.setDnsMonitoringSwitchOnFailure(cfg.isDnsMonitoringSwitchOnFailure());
         
         newconfig.setMasterConnectionMinimumIdleSize(cfg.getConnectionMinimumIdleSize());
         newconfig.setSubscriptionConnectionMinimumIdleSize(cfg.getSubscriptionConnectionMinimumIdleSize());

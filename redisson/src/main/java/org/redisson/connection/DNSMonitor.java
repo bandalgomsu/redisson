@@ -51,10 +51,13 @@ public class DNSMonitor {
     
     private volatile Timeout dnsMonitorFuture;
     private final long dnsMonitoringInterval;
+    private final boolean dnsMonitoringSwitchOnFailure;
 
     private boolean printed;
 
-    public DNSMonitor(ConnectionManager connectionManager, RedisClient masterHost, Collection<RedisURI> slaveHosts, long dnsMonitoringInterval, AddressResolverGroup<InetSocketAddress> resolverGroup) {
+    public DNSMonitor(ConnectionManager connectionManager, RedisClient masterHost, Collection<RedisURI> slaveHosts,
+                      long dnsMonitoringInterval, boolean dnsMonitoringSwitchOnFailure,
+                      AddressResolverGroup<InetSocketAddress> resolverGroup) {
         this.resolver = resolverGroup.getResolver(connectionManager.getServiceManager().getGroup().next());
         
         masterHost.resolveAddr().join();
@@ -67,6 +70,7 @@ public class DNSMonitor {
         }
         this.connectionManager = connectionManager;
         this.dnsMonitoringInterval = dnsMonitoringInterval;
+        this.dnsMonitoringSwitchOnFailure = dnsMonitoringSwitchOnFailure;
     }
     
     public void start() {
@@ -132,23 +136,34 @@ public class DNSMonitor {
 
                 log.debug("{} resolved to {} and {} selected", entry.getKey().getHost(), addresses, address);
 
-
-
                 try {
                     InetSocketAddress currentMasterAddr = entry.getValue();
+                    MasterSlaveEntry masterSlaveEntry = connectionManager.getEntry(currentMasterAddr);
+                    if (masterSlaveEntry == null) {
+                        log.error("Unable to find entry for current master {}", currentMasterAddr);
+                        promise.complete(null);
+                        return;
+                    }
+
+                    if (dnsMonitoringSwitchOnFailure) {
+                        ClientConnectionsEntry currentMasterEntry = masterSlaveEntry.getEntry();
+                        if (currentMasterEntry != null
+                                && !currentMasterEntry.isFreezed()
+                                && !currentMasterEntry.getClient().getConfig().getFailedNodeDetector().isNodeFailed()) {
+                            log.debug(
+                                    "Resolved DNS to {} for {} but current master {} is healthy. Master switch skipped.",
+                                    addresses, entry.getKey(), currentMasterAddr);
+                            promise.complete(null);
+                            return;
+                        }
+                    }
+
                     byte[] addr = NetUtil.createByteArrayFromIpAddressString(address.getHost());
                     InetSocketAddress newMasterAddr = new InetSocketAddress(InetAddress.getByAddress(entry.getKey().getHost(), addr), address.getPort());
                     if (!address.equals(currentMasterAddr)) {
                         log.info("Detected DNS change. Master {} has changed ip from {} to {}",
                                 entry.getKey(), currentMasterAddr.getAddress().getHostAddress(),
                                 newMasterAddr.getAddress().getHostAddress());
-
-                        MasterSlaveEntry masterSlaveEntry = connectionManager.getEntry(currentMasterAddr);
-                        if (masterSlaveEntry == null) {
-                            log.error("Unable to find entry for current master {}", currentMasterAddr);
-                            promise.complete(null);
-                            return;
-                        }
 
                         CompletableFuture<RedisClient> changeFuture = masterSlaveEntry.changeMaster(newMasterAddr, entry.getKey());
                         changeFuture.whenComplete((r, e) -> {

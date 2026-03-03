@@ -74,6 +74,8 @@ public class BaseMasterSlaveServersConfig<T extends BaseMasterSlaveServersConfig
 
     private long dnsMonitoringInterval = 5000;
 
+    private boolean dnsMonitoringSwitchOnFailure;
+
     private FailedNodeDetector failedSlaveNodeDetector = new FailedConnectionDetector();
     
     public BaseMasterSlaveServersConfig() {
@@ -91,6 +93,7 @@ public class BaseMasterSlaveServersConfig<T extends BaseMasterSlaveServersConfig
         setReadMode(config.getReadMode());
         setSubscriptionMode(config.getSubscriptionMode());
         setDnsMonitoringInterval(config.getDnsMonitoringInterval());
+        setDnsMonitoringSwitchOnFailure(config.isDnsMonitoringSwitchOnFailure());
         setFailedSlaveReconnectionInterval(config.getFailedSlaveReconnectionInterval());
         setFailedSlaveNodeDetector(config.getFailedSlaveNodeDetector());
     }
@@ -318,6 +321,27 @@ public class BaseMasterSlaveServersConfig<T extends BaseMasterSlaveServersConfig
     }
     public long getDnsMonitoringInterval() {
         return dnsMonitoringInterval;
+    }
+
+    /**
+     * Defines DNS monitoring behavior.
+     * <p>
+     * If set to <code>true</code> then DNS change causes master switch only if current master is considered failed.
+     * <p>
+     * If set to <code>false</code> then DNS change causes immediate master switch.
+     * <p>
+     * Default is <code>false</code>.
+     *
+     * @param dnsMonitoringSwitchOnFailure flag
+     * @return config
+     */
+    public T setDnsMonitoringSwitchOnFailure(boolean dnsMonitoringSwitchOnFailure) {
+        this.dnsMonitoringSwitchOnFailure = dnsMonitoringSwitchOnFailure;
+        return (T) this;
+    }
+
+    public boolean isDnsMonitoringSwitchOnFailure() {
+        return dnsMonitoringSwitchOnFailure;
     }
 
     /**
